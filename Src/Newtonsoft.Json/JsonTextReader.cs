@@ -76,6 +76,8 @@ namespace Newtonsoft.Json
         private StringBuffer _stringBuffer;
         private StringReference _stringReference;
         private IArrayPool<char>? _arrayPool;
+        // explicit depth receipt: the number of currently open JSON objects and arrays
+        private int _containerDepth;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="JsonTextReader"/> class with the specified <see cref="TextReader"/>.
@@ -127,6 +129,19 @@ namespace Newtonsoft.Json
                 _arrayPool = value;
             }
         }
+
+        /// <summary>
+        /// Gets the number of JSON object and array containers that are currently open.
+        /// This is an explicit depth receipt: the count is incremented when a <c>{</c> or <c>[</c>
+        /// is read and decremented when the matching <c>}</c> or <c>]</c> is read.
+        /// Comments and property names do not affect the count, and when
+        /// <see cref="JsonReader.SupportMultipleContent"/> is <c>true</c> the count resets
+        /// to zero each time a new root value starts.
+        /// When <see cref="JsonReader.MaxDepth"/> is exceeded the reader rejects the new
+        /// container with a <see cref="JsonReaderException"/> before its token is produced,
+        /// while closing containers that are already at the limit is still allowed.
+        /// </summary>
+        public int ContainerDepth => _containerDepth;
 
         private void EnsureBufferNotEmpty()
         {
@@ -544,13 +559,13 @@ namespace Newtonsoft.Json
                                 return data;
                             case '{':
                                 _charPos++;
-                                SetToken(JsonToken.StartObject);
+                                SetStartContainerToken(JsonToken.StartObject);
                                 ReadIntoWrappedTypeObject();
                                 isWrapped = true;
                                 break;
                             case '[':
                                 _charPos++;
-                                SetToken(JsonToken.StartArray);
+                                SetStartContainerToken(JsonToken.StartArray);
                                 return ReadArrayIntoByteArray();
                             case 'n':
                                 HandleNull();
@@ -565,7 +580,7 @@ namespace Newtonsoft.Json
                                 _charPos++;
                                 if (_currentState == State.Array || _currentState == State.ArrayStart || _currentState == State.PostValue)
                                 {
-                                    SetToken(JsonToken.EndArray);
+                                    SetEndContainerToken(JsonToken.EndArray);
                                     return null;
                                 }
                                 throw CreateUnexpectedCharacterException(currentChar);
@@ -695,7 +710,7 @@ namespace Newtonsoft.Json
                                 _charPos++;
                                 if (_currentState == State.Array || _currentState == State.ArrayStart || _currentState == State.PostValue)
                                 {
-                                    SetToken(JsonToken.EndArray);
+                                    SetEndContainerToken(JsonToken.EndArray);
                                     return null;
                                 }
                                 throw CreateUnexpectedCharacterException(currentChar);
@@ -853,7 +868,7 @@ namespace Newtonsoft.Json
                                 _charPos++;
                                 if (_currentState == State.Array || _currentState == State.ArrayStart || _currentState == State.PostValue)
                                 {
-                                    SetToken(JsonToken.EndArray);
+                                    SetEndContainerToken(JsonToken.EndArray);
                                     return null;
                                 }
                                 throw CreateUnexpectedCharacterException(currentChar);
@@ -981,7 +996,7 @@ namespace Newtonsoft.Json
                                 _charPos++;
                                 if (_currentState == State.Array || _currentState == State.ArrayStart || _currentState == State.PostValue)
                                 {
-                                    SetToken(JsonToken.EndArray);
+                                    SetEndContainerToken(JsonToken.EndArray);
                                     return null;
                                 }
                                 throw CreateUnexpectedCharacterException(currentChar);
@@ -1463,11 +1478,11 @@ namespace Newtonsoft.Json
                         break;
                     case '}':
                         _charPos++;
-                        SetToken(JsonToken.EndObject);
+                        SetEndContainerToken(JsonToken.EndObject);
                         return true;
                     case ']':
                         _charPos++;
-                        SetToken(JsonToken.EndArray);
+                        SetEndContainerToken(JsonToken.EndArray);
                         return true;
                     case ')':
                         _charPos++;
@@ -1543,7 +1558,7 @@ namespace Newtonsoft.Json
                         }
                         break;
                     case '}':
-                        SetToken(JsonToken.EndObject);
+                        SetEndContainerToken(JsonToken.EndObject);
                         _charPos++;
                         return true;
                     case '/':
@@ -1690,6 +1705,32 @@ namespace Newtonsoft.Json
             throw JsonReaderException.Create(this, "Invalid JavaScript property identifier character: {0}.".FormatWith(CultureInfo.InvariantCulture, currentChar));
         }
 
+        // Explicit depth receipt: tracks the real nesting count of objects and arrays.
+        // The count is updated before the container token is produced so that when
+        // MaxDepth is exceeded the new container is rejected before it is opened,
+        // while containers already at the limit can still be closed normally.
+        private void SetStartContainerToken(JsonToken token)
+        {
+            if (_currentState == State.Start)
+            {
+                // a new root value (SupportMultipleContent) starts with a fresh depth count
+                _containerDepth = 0;
+            }
+
+            _containerDepth++;
+            SetToken(token);
+        }
+
+        private void SetEndContainerToken(JsonToken token)
+        {
+            if (_containerDepth > 0)
+            {
+                _containerDepth--;
+            }
+
+            SetToken(token);
+        }
+
         private bool ParseValue()
         {
             MiscellaneousUtils.Assert(_chars != null);
@@ -1771,15 +1812,15 @@ namespace Newtonsoft.Json
                         return true;
                     case '{':
                         _charPos++;
-                        SetToken(JsonToken.StartObject);
+                        SetStartContainerToken(JsonToken.StartObject);
                         return true;
                     case '[':
                         _charPos++;
-                        SetToken(JsonToken.StartArray);
+                        SetStartContainerToken(JsonToken.StartArray);
                         return true;
                     case ']':
                         _charPos++;
-                        SetToken(JsonToken.EndArray);
+                        SetEndContainerToken(JsonToken.EndArray);
                         return true;
                     case ',':
                         // don't increment position, the next call to read will handle comma

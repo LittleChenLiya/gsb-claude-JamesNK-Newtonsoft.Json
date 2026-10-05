@@ -1,0 +1,14 @@
+/* leading comment before the first root */
+{
+  "a": [
+    1,
+    2
+  ]
+}
+// comment between roots
+[
+  {
+    "b": true
+  }
+]
+/* trailing comment after the second root */
