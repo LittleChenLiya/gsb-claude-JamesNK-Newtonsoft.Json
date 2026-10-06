@@ -49,6 +49,7 @@ namespace Newtonsoft.Json.Serialization
 
         private ErrorContext? _currentErrorContext;
         private BidirectionalDictionary<string, object>? _mappings;
+        private object? _scopedReferenceResolverState;
 
         internal readonly JsonSerializer Serializer;
         internal readonly ITraceWriter? TraceWriter;
@@ -79,6 +80,19 @@ namespace Newtonsoft.Json.Serialization
 
                 return _mappings;
             }
+        }
+
+        /// <summary>
+        /// State slot used by <see cref="ScopedReferenceResolver"/>.
+        /// The internal serializer instance is created fresh for every Serialize/Deserialize
+        /// call, so anything stored here is automatically scoped to the current operation:
+        /// a failed call discards its half-populated state along with this instance and the
+        /// next call starts with no leftover reference Ids.
+        /// </summary>
+        internal object? ScopedReferenceResolverState
+        {
+            get => _scopedReferenceResolverState;
+            set => _scopedReferenceResolverState = value;
         }
 
         protected NullValueHandling ResolvedNullValueHandling(JsonObjectContract? containerContract, JsonProperty property)
