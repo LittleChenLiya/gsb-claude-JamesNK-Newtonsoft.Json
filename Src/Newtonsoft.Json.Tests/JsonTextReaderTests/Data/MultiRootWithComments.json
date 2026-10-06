@@ -1,0 +1,5 @@
+/* first root: two container levels */
+{"a":[1,2]}
+// second root: also two container levels
+[true,{"b":null}]
+/* done */

@@ -1042,13 +1042,13 @@ new Date()"));
 
             Assert.IsTrue(await reader.ReadAsync());
 
-            await ExceptionAssert.ThrowsAsync<JsonReaderException>(async () => { Assert.IsTrue(await reader.ReadAsync()); }, "The reader's MaxDepth of 1 has been exceeded. Path '[0]', line 1, position 2.");
+            await ExceptionAssert.ThrowsAsync<JsonReaderException>(async () => { Assert.IsTrue(await reader.ReadAsync()); }, "The reader's MaxDepth of 1 has been exceeded. Path '', line 1, position 2.");
         }
 
         [Test]
-        public async Task MaxDepthDoesNotRecursivelyErrorAsync()
+        public async Task MaxDepthExceededAsync_RejectsBeforeOpenAndAllowsClosing()
         {
-            string json = "[[[[]]],[[]]]";
+            string json = "[[1],[2]]";
 
             JsonTextReader reader = new JsonTextReader(new StringReader(json))
             {
@@ -1056,42 +1056,23 @@ new Date()"));
             };
 
             Assert.IsTrue(await reader.ReadAsync());
+            Assert.AreEqual(JsonToken.StartArray, reader.TokenType);
             Assert.AreEqual(0, reader.Depth);
 
-            await ExceptionAssert.ThrowsAsync<JsonReaderException>(async () => { Assert.IsTrue(await reader.ReadAsync()); }, "The reader's MaxDepth of 1 has been exceeded. Path '[0]', line 1, position 2.");
-            Assert.AreEqual(1, reader.Depth);
-
-            Assert.IsTrue(await reader.ReadAsync());
-            Assert.AreEqual(2, reader.Depth);
-
-            Assert.IsTrue(await reader.ReadAsync());
-            Assert.AreEqual(3, reader.Depth);
-
-            Assert.IsTrue(await reader.ReadAsync());
-            Assert.AreEqual(3, reader.Depth);
-
-            Assert.IsTrue(await reader.ReadAsync());
-            Assert.AreEqual(2, reader.Depth);
-
-            Assert.IsTrue(await reader.ReadAsync());
-            Assert.AreEqual(1, reader.Depth);
-
-            await ExceptionAssert.ThrowsAsync<JsonReaderException>(async () => { Assert.IsTrue(await reader.ReadAsync()); }, "The reader's MaxDepth of 1 has been exceeded. Path '[1]', line 1, position 9.");
-            Assert.AreEqual(1, reader.Depth);
-
-            Assert.IsTrue(await reader.ReadAsync());
-            Assert.AreEqual(2, reader.Depth);
-
-            Assert.IsTrue(await reader.ReadAsync());
-            Assert.AreEqual(2, reader.Depth);
-
-            Assert.IsTrue(await reader.ReadAsync());
-            Assert.AreEqual(1, reader.Depth);
-
-            Assert.IsTrue(await reader.ReadAsync());
+            // the second array would exceed the limit and is rejected before it is opened,
+            // leaving the reader's token, path and position untouched
+            await ExceptionAssert.ThrowsAsync<JsonReaderException>(async () => { Assert.IsTrue(await reader.ReadAsync()); }, "The reader's MaxDepth of 1 has been exceeded. Path '', line 1, position 2.");
+            Assert.AreEqual(JsonToken.StartArray, reader.TokenType);
             Assert.AreEqual(0, reader.Depth);
 
-            Assert.IsFalse(await reader.ReadAsync());
+            // the container that is still open can be read and closed normally
+            Assert.IsTrue(await reader.ReadAsync());
+            Assert.AreEqual(JsonToken.Integer, reader.TokenType);
+            Assert.AreEqual(1, reader.Depth);
+
+            Assert.IsTrue(await reader.ReadAsync());
+            Assert.AreEqual(JsonToken.EndArray, reader.TokenType);
+            Assert.AreEqual(0, reader.Depth);
         }
 
         [Test]

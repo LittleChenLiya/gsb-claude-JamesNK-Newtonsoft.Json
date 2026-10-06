@@ -64,7 +64,7 @@ namespace Newtonsoft.Json.Tests.Documentation.Samples.Serializer
             catch (JsonReaderException ex)
             {
                 Console.WriteLine(ex.Message);
-                // The reader's MaxDepth of 2 has been exceeded. Path '[0][0]', line 3, position 12.
+                // The reader's MaxDepth of 2 has been exceeded. Path '[0]', line 3, position 12.
             }
             #endregion
         }

@@ -68,6 +68,10 @@ namespace Newtonsoft.Json
                 switch (_currentState)
                 {
                     case State.Start:
+                        // a new root value (e.g. the next root in multiple content mode)
+                        // always starts with a fresh container depth count
+                        _containerDepth = 0;
+                        return ParseValueAsync(cancellationToken);
                     case State.Property:
                     case State.Array:
                     case State.ArrayStart:
@@ -136,11 +140,11 @@ namespace Newtonsoft.Json
                         break;
                     case '}':
                         _charPos++;
-                        SetToken(JsonToken.EndObject);
+                        SetTokenEndContainer(JsonToken.EndObject);
                         return true;
                     case ']':
                         _charPos++;
-                        SetToken(JsonToken.EndArray);
+                        SetTokenEndContainer(JsonToken.EndArray);
                         return true;
                     case ')':
                         _charPos++;
@@ -329,15 +333,15 @@ namespace Newtonsoft.Json
                         return true;
                     case '{':
                         _charPos++;
-                        SetToken(JsonToken.StartObject);
+                        SetTokenStartContainer(JsonToken.StartObject);
                         return true;
                     case '[':
                         _charPos++;
-                        SetToken(JsonToken.StartArray);
+                        SetTokenStartContainer(JsonToken.StartArray);
                         return true;
                     case ']':
                         _charPos++;
-                        SetToken(JsonToken.EndArray);
+                        SetTokenEndContainer(JsonToken.EndArray);
                         return true;
                     case ',':
 
@@ -623,7 +627,7 @@ namespace Newtonsoft.Json
 
                         break;
                     case '}':
-                        SetToken(JsonToken.EndObject);
+                        SetTokenEndContainer(JsonToken.EndObject);
                         _charPos++;
                         return true;
                     case '/':
@@ -1263,7 +1267,7 @@ namespace Newtonsoft.Json
                                 _charPos++;
                                 if (_currentState == State.Array || _currentState == State.ArrayStart || _currentState == State.PostValue)
                                 {
-                                    SetToken(JsonToken.EndArray);
+                                    SetTokenEndContainer(JsonToken.EndArray);
                                     return null;
                                 }
 
@@ -1377,7 +1381,7 @@ namespace Newtonsoft.Json
                                 _charPos++;
                                 if (_currentState == State.Array || _currentState == State.ArrayStart || _currentState == State.PostValue)
                                 {
-                                    SetToken(JsonToken.EndArray);
+                                    SetTokenEndContainer(JsonToken.EndArray);
                                     return null;
                                 }
 
@@ -1513,7 +1517,7 @@ namespace Newtonsoft.Json
                                 _charPos++;
                                 if (_currentState == State.Array || _currentState == State.ArrayStart || _currentState == State.PostValue)
                                 {
-                                    SetToken(JsonToken.EndArray);
+                                    SetTokenEndContainer(JsonToken.EndArray);
                                     return null;
                                 }
 
@@ -1616,13 +1620,13 @@ namespace Newtonsoft.Json
                                 return data;
                             case '{':
                                 _charPos++;
-                                SetToken(JsonToken.StartObject);
+                                SetTokenStartContainer(JsonToken.StartObject);
                                 await ReadIntoWrappedTypeObjectAsync(cancellationToken).ConfigureAwait(false);
                                 isWrapped = true;
                                 break;
                             case '[':
                                 _charPos++;
-                                SetToken(JsonToken.StartArray);
+                                SetTokenStartContainer(JsonToken.StartArray);
                                 return await ReadArrayIntoByteArrayAsync(cancellationToken).ConfigureAwait(false);
                             case 'n':
                                 await HandleNullAsync(cancellationToken).ConfigureAwait(false);
@@ -1637,7 +1641,7 @@ namespace Newtonsoft.Json
                                 _charPos++;
                                 if (_currentState == State.Array || _currentState == State.ArrayStart || _currentState == State.PostValue)
                                 {
-                                    SetToken(JsonToken.EndArray);
+                                    SetTokenEndContainer(JsonToken.EndArray);
                                     return null;
                                 }
 

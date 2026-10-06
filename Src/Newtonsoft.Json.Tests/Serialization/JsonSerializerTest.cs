@@ -7999,7 +7999,7 @@ This is just junk, though.";
 
             ExceptionAssert.Throws<JsonReaderException>(
                 () => serializer.Deserialize(reader),
-                "The reader's MaxDepth of 2 has been exceeded. Path '[0][0]', line 1, position 3.");
+                "The reader's MaxDepth of 2 has been exceeded. Path '[0]', line 1, position 3.");
         }
 
         [Test]
