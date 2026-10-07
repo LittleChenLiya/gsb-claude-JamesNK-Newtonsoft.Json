@@ -211,14 +211,39 @@ namespace Newtonsoft.Json.Utilities
         }
 
         #region Parse
+        // The explicit time zone offset written in the parsed text, e.g. +08:00 or Z (mapped to zero).
+        // Null when the text contains no zone designator.
+        private static TimeSpan? GetExplicitZoneOffset(DateTimeParser dateTimeParser)
+        {
+            switch (dateTimeParser.Zone)
+            {
+                case ParserTimeZone.Utc:
+                    return TimeSpan.Zero;
+                case ParserTimeZone.LocalWestOfUtc:
+                    return new TimeSpan(-dateTimeParser.ZoneHour, -dateTimeParser.ZoneMinute, 0);
+                case ParserTimeZone.LocalEastOfUtc:
+                    return new TimeSpan(dateTimeParser.ZoneHour, dateTimeParser.ZoneMinute, 0);
+                default:
+                    return null;
+            }
+        }
+
         internal static bool TryParseDateTimeIso(StringReference text, DateTimeZoneHandling dateTimeZoneHandling, out DateTime dt)
+        {
+            return TryParseDateTimeIso(text, dateTimeZoneHandling, out dt, out _);
+        }
+
+        internal static bool TryParseDateTimeIso(StringReference text, DateTimeZoneHandling dateTimeZoneHandling, out DateTime dt, out TimeSpan? explicitOffset)
         {
             DateTimeParser dateTimeParser = new DateTimeParser();
             if (!dateTimeParser.Parse(text.Chars, text.StartIndex, text.Length))
             {
                 dt = default;
+                explicitOffset = null;
                 return false;
             }
+
+            explicitOffset = GetExplicitZoneOffset(dateTimeParser);
 
             DateTime d = CreateDateTime(dateTimeParser);
 
@@ -279,12 +304,20 @@ namespace Newtonsoft.Json.Utilities
 #if HAVE_DATE_TIME_OFFSET
         internal static bool TryParseDateTimeOffsetIso(StringReference text, out DateTimeOffset dt)
         {
+            return TryParseDateTimeOffsetIso(text, out dt, out _);
+        }
+
+        internal static bool TryParseDateTimeOffsetIso(StringReference text, out DateTimeOffset dt, out TimeSpan? explicitOffset)
+        {
             DateTimeParser dateTimeParser = new DateTimeParser();
             if (!dateTimeParser.Parse(text.Chars, text.StartIndex, text.Length))
             {
                 dt = default;
+                explicitOffset = null;
                 return false;
             }
+
+            explicitOffset = GetExplicitZoneOffset(dateTimeParser);
 
             DateTime d = CreateDateTime(dateTimeParser);
 
@@ -310,6 +343,7 @@ namespace Newtonsoft.Json.Utilities
             if (ticks < 0 || ticks > 3155378975999999999)
             {
                 dt = default;
+                explicitOffset = null;
                 return false;
             }
 
@@ -343,6 +377,13 @@ namespace Newtonsoft.Json.Utilities
 
         internal static bool TryParseDateTime(StringReference s, DateTimeZoneHandling dateTimeZoneHandling, string? dateFormatString, CultureInfo culture, out DateTime dt)
         {
+            return TryParseDateTime(s, dateTimeZoneHandling, dateFormatString, culture, out dt, out _);
+        }
+
+        internal static bool TryParseDateTime(StringReference s, DateTimeZoneHandling dateTimeZoneHandling, string? dateFormatString, CultureInfo culture, out DateTime dt, out TimeSpan? explicitOffset)
+        {
+            explicitOffset = null;
+
             if (s.Length > 0)
             {
                 int i = s.StartIndex;
@@ -350,7 +391,7 @@ namespace Newtonsoft.Json.Utilities
                 {
                     if (s.Length >= 9 && s.StartsWith("/Date(") && s.EndsWith(")/"))
                     {
-                        if (TryParseDateTimeMicrosoft(s, dateTimeZoneHandling, out dt))
+                        if (TryParseDateTimeMicrosoft(s, dateTimeZoneHandling, out dt, out explicitOffset))
                         {
                             return true;
                         }
@@ -358,7 +399,7 @@ namespace Newtonsoft.Json.Utilities
                 }
                 else if (s.Length >= 19 && s.Length <= 40 && char.IsDigit(s[i]) && s[i + 10] == 'T')
                 {
-                    if (TryParseDateTimeIso(s, dateTimeZoneHandling, out dt))
+                    if (TryParseDateTimeIso(s, dateTimeZoneHandling, out dt, out explicitOffset))
                     {
                         return true;
                     }
@@ -368,24 +409,33 @@ namespace Newtonsoft.Json.Utilities
                 {
                     if (TryParseDateTimeExact(s.ToString(), dateTimeZoneHandling, dateFormatString, culture, out dt))
                     {
+                        explicitOffset = null;
                         return true;
                     }
                 }
             }
 
             dt = default;
+            explicitOffset = null;
             return false;
         }
 
         internal static bool TryParseDateTime(string s, DateTimeZoneHandling dateTimeZoneHandling, string? dateFormatString, CultureInfo culture, out DateTime dt)
         {
+            return TryParseDateTime(s, dateTimeZoneHandling, dateFormatString, culture, out dt, out _);
+        }
+
+        internal static bool TryParseDateTime(string s, DateTimeZoneHandling dateTimeZoneHandling, string? dateFormatString, CultureInfo culture, out DateTime dt, out TimeSpan? explicitOffset)
+        {
+            explicitOffset = null;
+
             if (s.Length > 0)
             {
                 if (s[0] == '/')
                 {
                     if (s.Length >= 9 && s.StartsWith("/Date(", StringComparison.Ordinal) && s.EndsWith(")/", StringComparison.Ordinal))
                     {
-                        if (TryParseDateTimeMicrosoft(new StringReference(s.ToCharArray(), 0, s.Length), dateTimeZoneHandling, out dt))
+                        if (TryParseDateTimeMicrosoft(new StringReference(s.ToCharArray(), 0, s.Length), dateTimeZoneHandling, out dt, out explicitOffset))
                         {
                             return true;
                         }
@@ -396,6 +446,7 @@ namespace Newtonsoft.Json.Utilities
                     if (DateTime.TryParseExact(s, IsoDateFormat, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out dt))
                     {
                         dt = EnsureDateTime(dt, dateTimeZoneHandling);
+                        explicitOffset = GetIsoExplicitOffset(s);
                         return true;
                     }
                 }
@@ -404,18 +455,40 @@ namespace Newtonsoft.Json.Utilities
                 {
                     if (TryParseDateTimeExact(s, dateTimeZoneHandling, dateFormatString, culture, out dt))
                     {
+                        explicitOffset = null;
                         return true;
                     }
                 }
             }
 
             dt = default;
+            explicitOffset = null;
             return false;
+        }
+
+        // Reads the zone designator of an ISO 8601 date string that has already been successfully parsed.
+        private static TimeSpan? GetIsoExplicitOffset(string s)
+        {
+            DateTimeParser dateTimeParser = new DateTimeParser();
+            char[] chars = s.ToCharArray();
+            if (dateTimeParser.Parse(chars, 0, chars.Length))
+            {
+                return GetExplicitZoneOffset(dateTimeParser);
+            }
+
+            return null;
         }
 
 #if HAVE_DATE_TIME_OFFSET
         internal static bool TryParseDateTimeOffset(StringReference s, string? dateFormatString, CultureInfo culture, out DateTimeOffset dt)
         {
+            return TryParseDateTimeOffset(s, dateFormatString, culture, out dt, out _);
+        }
+
+        internal static bool TryParseDateTimeOffset(StringReference s, string? dateFormatString, CultureInfo culture, out DateTimeOffset dt, out TimeSpan? explicitOffset)
+        {
+            explicitOffset = null;
+
             if (s.Length > 0)
             {
                 int i = s.StartIndex;
@@ -423,7 +496,7 @@ namespace Newtonsoft.Json.Utilities
                 {
                     if (s.Length >= 9 && s.StartsWith("/Date(") && s.EndsWith(")/"))
                     {
-                        if (TryParseDateTimeOffsetMicrosoft(s, out dt))
+                        if (TryParseDateTimeOffsetMicrosoft(s, out dt, out explicitOffset))
                         {
                             return true;
                         }
@@ -431,7 +504,7 @@ namespace Newtonsoft.Json.Utilities
                 }
                 else if (s.Length >= 19 && s.Length <= 40 && char.IsDigit(s[i]) && s[i + 10] == 'T')
                 {
-                    if (TryParseDateTimeOffsetIso(s, out dt))
+                    if (TryParseDateTimeOffsetIso(s, out dt, out explicitOffset))
                     {
                         return true;
                     }
@@ -441,24 +514,33 @@ namespace Newtonsoft.Json.Utilities
                 {
                     if (TryParseDateTimeOffsetExact(s.ToString(), dateFormatString, culture, out dt))
                     {
+                        explicitOffset = null;
                         return true;
                     }
                 }
             }
 
             dt = default;
+            explicitOffset = null;
             return false;
         }
 
         internal static bool TryParseDateTimeOffset(string s, string? dateFormatString, CultureInfo culture, out DateTimeOffset dt)
         {
+            return TryParseDateTimeOffset(s, dateFormatString, culture, out dt, out _);
+        }
+
+        internal static bool TryParseDateTimeOffset(string s, string? dateFormatString, CultureInfo culture, out DateTimeOffset dt, out TimeSpan? explicitOffset)
+        {
+            explicitOffset = null;
+
             if (s.Length > 0)
             {
                 if (s[0] == '/')
                 {
                     if (s.Length >= 9 && s.StartsWith("/Date(", StringComparison.Ordinal) && s.EndsWith(")/", StringComparison.Ordinal))
                     {
-                        if (TryParseDateTimeOffsetMicrosoft(new StringReference(s.ToCharArray(), 0, s.Length), out dt))
+                        if (TryParseDateTimeOffsetMicrosoft(new StringReference(s.ToCharArray(), 0, s.Length), out dt, out explicitOffset))
                         {
                             return true;
                         }
@@ -468,7 +550,7 @@ namespace Newtonsoft.Json.Utilities
                 {
                     if (DateTimeOffset.TryParseExact(s, IsoDateFormat, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out dt))
                     {
-                        if (TryParseDateTimeOffsetIso(new StringReference(s.ToCharArray(), 0, s.Length), out dt))
+                        if (TryParseDateTimeOffsetIso(new StringReference(s.ToCharArray(), 0, s.Length), out dt, out explicitOffset))
                         {
                             return true;
                         }
@@ -479,12 +561,14 @@ namespace Newtonsoft.Json.Utilities
                 {
                     if (TryParseDateTimeOffsetExact(s, dateFormatString, culture, out dt))
                     {
+                        explicitOffset = null;
                         return true;
                     }
                 }
             }
 
             dt = default;
+            explicitOffset = null;
             return false;
         }
 #endif
@@ -521,11 +605,20 @@ namespace Newtonsoft.Json.Utilities
 
         private static bool TryParseDateTimeMicrosoft(StringReference text, DateTimeZoneHandling dateTimeZoneHandling, out DateTime dt)
         {
-            if (!TryParseMicrosoftDate(text, out long ticks, out _, out DateTimeKind kind))
+            return TryParseDateTimeMicrosoft(text, dateTimeZoneHandling, out dt, out _);
+        }
+
+        private static bool TryParseDateTimeMicrosoft(StringReference text, DateTimeZoneHandling dateTimeZoneHandling, out DateTime dt, out TimeSpan? explicitOffset)
+        {
+            if (!TryParseMicrosoftDate(text, out long ticks, out TimeSpan offset, out DateTimeKind kind))
             {
                 dt = default;
+                explicitOffset = null;
                 return false;
             }
+
+            // an offset written in the text, e.g. /Date(1198908717056+0800)/, marks the value as local
+            explicitOffset = (kind == DateTimeKind.Local) ? offset : (TimeSpan?)null;
 
             DateTime utcDateTime = ConvertJavaScriptTicksToDateTime(ticks);
 
@@ -562,11 +655,19 @@ namespace Newtonsoft.Json.Utilities
 #if HAVE_DATE_TIME_OFFSET
         private static bool TryParseDateTimeOffsetMicrosoft(StringReference text, out DateTimeOffset dt)
         {
-            if (!TryParseMicrosoftDate(text, out long ticks, out TimeSpan offset, out _))
+            return TryParseDateTimeOffsetMicrosoft(text, out dt, out _);
+        }
+
+        private static bool TryParseDateTimeOffsetMicrosoft(StringReference text, out DateTimeOffset dt, out TimeSpan? explicitOffset)
+        {
+            if (!TryParseMicrosoftDate(text, out long ticks, out TimeSpan offset, out DateTimeKind kind))
             {
                 dt = default(DateTime);
+                explicitOffset = null;
                 return false;
             }
+
+            explicitOffset = (kind == DateTimeKind.Local) ? offset : (TimeSpan?)null;
 
             DateTime utcDateTime = ConvertJavaScriptTicksToDateTime(ticks);
 

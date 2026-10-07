@@ -118,6 +118,13 @@ namespace Newtonsoft.Json
         public override object Value => _reader.Value;
 
         /// <summary>
+        /// Gets a source view of the current date token, capturing the original text the date was
+        /// parsed from and the explicit time zone offset written in that text.
+        /// </summary>
+        /// <value></value>
+        public override JsonDateTokenSource? DateTokenSource => _reader.DateTokenSource;
+
+        /// <summary>
         /// Gets the depth of the current token in the JSON document.
         /// </summary>
         /// <value>The depth of the current token in the JSON document.</value>

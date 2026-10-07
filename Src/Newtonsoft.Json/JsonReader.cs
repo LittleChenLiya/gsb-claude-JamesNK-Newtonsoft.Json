@@ -114,6 +114,7 @@ namespace Newtonsoft.Json
         // current Token data
         private JsonToken _tokenType;
         private object? _value;
+        private JsonDateTokenSource? _dateTokenSource;
         internal char _quoteChar;
         internal State _currentState;
         private JsonPosition _currentPosition;
@@ -253,6 +254,21 @@ namespace Newtonsoft.Json
         /// Gets the text value of the current JSON token.
         /// </summary>
         public virtual object? Value => _value;
+
+        /// <summary>
+        /// Gets a source view of the current date token, capturing the original text the date was
+        /// parsed from and the explicit time zone offset written in that text, e.g. <c>+08:00</c>.
+        /// <c>null</c> when the current token is not a date parsed from text.
+        /// The returned view is an independent snapshot and stays valid after the reader advances.
+        /// </summary>
+        public virtual JsonDateTokenSource? DateTokenSource => _dateTokenSource;
+
+        // Called after SetToken when a date token has been parsed from text.
+        // The view is a snapshot, independent of the reader's buffer.
+        internal void SetDateTokenSource(JsonDateTokenSource source)
+        {
+            _dateTokenSource = source;
+        }
 
         /// <summary>
         /// Gets the .NET type for the current JSON token.
@@ -869,10 +885,11 @@ namespace Newtonsoft.Json
                 return null;
             }
 
-            if (DateTimeUtils.TryParseDateTime(s, DateTimeZoneHandling, _dateFormatString, Culture, out DateTime dt))
+            if (DateTimeUtils.TryParseDateTime(s, DateTimeZoneHandling, _dateFormatString, Culture, out DateTime dt, out TimeSpan? explicitOffset))
             {
                 dt = DateTimeUtils.EnsureDateTime(dt, DateTimeZoneHandling);
                 SetToken(JsonToken.Date, dt, false);
+                SetDateTokenSource(new JsonDateTokenSource(s, explicitOffset));
                 return dt;
             }
 
@@ -880,6 +897,7 @@ namespace Newtonsoft.Json
             {
                 dt = DateTimeUtils.EnsureDateTime(dt, DateTimeZoneHandling);
                 SetToken(JsonToken.Date, dt, false);
+                SetDateTokenSource(new JsonDateTokenSource(s, null));
                 return dt;
             }
 
@@ -924,15 +942,17 @@ namespace Newtonsoft.Json
                 return null;
             }
 
-            if (DateTimeUtils.TryParseDateTimeOffset(s, _dateFormatString, Culture, out DateTimeOffset dt))
+            if (DateTimeUtils.TryParseDateTimeOffset(s, _dateFormatString, Culture, out DateTimeOffset dt, out TimeSpan? explicitOffset))
             {
                 SetToken(JsonToken.Date, dt, false);
+                SetDateTokenSource(new JsonDateTokenSource(s, explicitOffset));
                 return dt;
             }
 
             if (DateTimeOffset.TryParse(s, Culture, DateTimeStyles.RoundtripKind, out dt))
             {
                 SetToken(JsonToken.Date, dt, false);
+                SetDateTokenSource(new JsonDateTokenSource(s, null));
                 return dt;
             }
 
@@ -1022,6 +1042,7 @@ namespace Newtonsoft.Json
         {
             _tokenType = newToken;
             _value = value;
+            _dateTokenSource = null;
 
             switch (newToken)
             {

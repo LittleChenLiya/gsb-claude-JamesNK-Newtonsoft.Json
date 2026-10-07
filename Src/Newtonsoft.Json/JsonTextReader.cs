@@ -219,18 +219,20 @@ namespace Newtonsoft.Json
 
                         if (dateParseHandling == DateParseHandling.DateTime)
                         {
-                            if (DateTimeUtils.TryParseDateTime(_stringReference, DateTimeZoneHandling, DateFormatString, Culture, out DateTime dt))
+                            if (DateTimeUtils.TryParseDateTime(_stringReference, DateTimeZoneHandling, DateFormatString, Culture, out DateTime dt, out TimeSpan? explicitOffset))
                             {
                                 SetToken(JsonToken.Date, dt, false);
+                                SetDateTokenSource(new JsonDateTokenSource(_stringReference.ToString(), explicitOffset));
                                 return;
                             }
                         }
 #if HAVE_DATE_TIME_OFFSET
                         else
                         {
-                            if (DateTimeUtils.TryParseDateTimeOffset(_stringReference, DateFormatString, Culture, out DateTimeOffset dt))
+                            if (DateTimeUtils.TryParseDateTimeOffset(_stringReference, DateFormatString, Culture, out DateTimeOffset dt, out TimeSpan? explicitOffset))
                             {
                                 SetToken(JsonToken.Date, dt, false);
+                                SetDateTokenSource(new JsonDateTokenSource(_stringReference.ToString(), explicitOffset));
                                 return;
                             }
                         }
