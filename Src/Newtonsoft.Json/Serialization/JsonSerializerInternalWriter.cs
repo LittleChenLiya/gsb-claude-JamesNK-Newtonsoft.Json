@@ -67,6 +67,12 @@ namespace Newtonsoft.Json.Serialization
                 throw new ArgumentNullException(nameof(jsonWriter));
             }
 
+            // each top-level serialize call records skipped properties independently
+            if (Serializer._contractResolver is ISerializationIgnoreTracker ignoreTracker)
+            {
+                ignoreTracker.OnSerializationStarting();
+            }
+
             _rootType = objectType;
             _rootLevel = _serializeStack.Count + 1;
 
@@ -299,8 +305,10 @@ namespace Newtonsoft.Json.Serialization
             return Serializer.GetReferenceResolver().IsReferenced(this, value);
         }
 
-        private bool ShouldWriteProperty(object? memberValue, JsonObjectContract? containerContract, JsonProperty property)
+        private bool ShouldWriteProperty(object? memberValue, JsonObjectContract? containerContract, JsonProperty property, out bool skippedDueToDefaultValue)
         {
+            skippedDueToDefaultValue = false;
+
             if (memberValue == null && ResolvedNullValueHandling(containerContract, property) == NullValueHandling.Ignore)
             {
                 return false;
@@ -309,6 +317,7 @@ namespace Newtonsoft.Json.Serialization
             if (HasFlag(property.DefaultValueHandling.GetValueOrDefault(Serializer._defaultValueHandling), DefaultValueHandling.Ignore)
                 && MiscellaneousUtils.ValueEquals(memberValue, property.GetResolvedDefaultValue()))
             {
+                skippedDueToDefaultValue = true;
                 return false;
             }
 
@@ -565,53 +574,78 @@ namespace Newtonsoft.Json.Serialization
 
         private bool CalculatePropertyValues(JsonWriter writer, object value, JsonContainerContract contract, JsonProperty? member, JsonProperty property, [NotNullWhen(true)]out JsonContract? memberContract, out object? memberValue)
         {
-            if (!property.Ignored && property.Readable && ShouldSerialize(writer, property, value) && IsSpecified(writer, property, value))
+            if (property.Ignored)
             {
-                if (property.PropertyContract == null)
+                RecordIgnoredProperty(property, SerializationIgnoreReason.Ignored);
+            }
+            else if (property.Readable)
+            {
+                if (!ShouldSerialize(writer, property, value))
                 {
-                    property.PropertyContract = Serializer._contractResolver.ResolveContract(property.PropertyType!);
+                    RecordIgnoredProperty(property, SerializationIgnoreReason.ShouldSerialize);
                 }
-
-                memberValue = property.ValueProvider!.GetValue(value);
-                memberContract = (property.PropertyContract.IsSealed) ? property.PropertyContract : GetContractSafe(memberValue);
-
-                if (ShouldWriteProperty(memberValue, contract as JsonObjectContract, property))
+                else if (IsSpecified(writer, property, value))
                 {
-                    if (ShouldWriteReference(memberValue, property, memberContract, contract, member))
+                    if (property.PropertyContract == null)
                     {
-                        property.WritePropertyName(writer);
-                        WriteReference(writer, memberValue!);
-                        return false;
+                        property.PropertyContract = Serializer._contractResolver.ResolveContract(property.PropertyType!);
                     }
 
-                    if (!CheckForCircularReference(writer, memberValue, property, memberContract, contract, member))
-                    {
-                        return false;
-                    }
+                    memberValue = property.ValueProvider!.GetValue(value);
+                    memberContract = (property.PropertyContract.IsSealed) ? property.PropertyContract : GetContractSafe(memberValue);
 
-                    if (memberValue == null)
+                    if (ShouldWriteProperty(memberValue, contract as JsonObjectContract, property, out bool skippedDueToDefaultValue))
                     {
-                        JsonObjectContract? objectContract = contract as JsonObjectContract;
-                        Required resolvedRequired = property._required ?? objectContract?.ItemRequired ?? Required.Default;
-                        if (resolvedRequired == Required.Always)
+                        if (ShouldWriteReference(memberValue, property, memberContract, contract, member))
                         {
-                            throw JsonSerializationException.Create(null, writer.ContainerPath, "Cannot write a null value for property '{0}'. Property requires a value.".FormatWith(CultureInfo.InvariantCulture, property.PropertyName), null);
+                            property.WritePropertyName(writer);
+                            WriteReference(writer, memberValue!);
+                            return false;
                         }
-                        if (resolvedRequired == Required.DisallowNull)
+
+                        if (!CheckForCircularReference(writer, memberValue, property, memberContract, contract, member))
                         {
-                            throw JsonSerializationException.Create(null, writer.ContainerPath, "Cannot write a null value for property '{0}'. Property requires a non-null value.".FormatWith(CultureInfo.InvariantCulture, property.PropertyName), null);
+                            return false;
                         }
-                    }
+
+                        if (memberValue == null)
+                        {
+                            JsonObjectContract? objectContract = contract as JsonObjectContract;
+                            Required resolvedRequired = property._required ?? objectContract?.ItemRequired ?? Required.Default;
+                            if (resolvedRequired == Required.Always)
+                            {
+                                throw JsonSerializationException.Create(null, writer.ContainerPath, "Cannot write a null value for property '{0}'. Property requires a value.".FormatWith(CultureInfo.InvariantCulture, property.PropertyName), null);
+                            }
+                            if (resolvedRequired == Required.DisallowNull)
+                            {
+                                throw JsonSerializationException.Create(null, writer.ContainerPath, "Cannot write a null value for property '{0}'. Property requires a non-null value.".FormatWith(CultureInfo.InvariantCulture, property.PropertyName), null);
+                            }
+                        }
 
 #pragma warning disable CS8762 // Parameter must have a non-null value when exiting in some condition.
-                    return true;
+                        return true;
 #pragma warning restore CS8762 // Parameter must have a non-null value when exiting in some condition.
+                    }
+
+                    if (skippedDueToDefaultValue)
+                    {
+                        RecordIgnoredProperty(property, SerializationIgnoreReason.DefaultValue);
+                    }
                 }
             }
 
             memberContract = null;
             memberValue = null;
             return false;
+        }
+
+        private void RecordIgnoredProperty(JsonProperty property, SerializationIgnoreReason reason)
+        {
+            // replays a decision the serializer has already made; never re-invokes getters or ShouldSerialize
+            if (Serializer._contractResolver is ISerializationIgnoreTracker ignoreTracker)
+            {
+                ignoreTracker.RecordIgnoredProperty(property, reason);
+            }
         }
 
         private void WriteObjectStart(JsonWriter writer, object value, JsonContract contract, JsonProperty? member, JsonContainerContract? collectionContract, JsonProperty? containerProperty)
