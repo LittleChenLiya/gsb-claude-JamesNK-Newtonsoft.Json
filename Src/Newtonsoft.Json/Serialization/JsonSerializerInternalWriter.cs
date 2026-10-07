@@ -72,6 +72,9 @@ namespace Newtonsoft.Json.Serialization
 
             JsonContract? contract = GetContractSafe(value);
 
+            JsonIgnoreExplanationCollector? explanationCollector = Serializer._ignoreExplanationSink as JsonIgnoreExplanationCollector;
+            explanationCollector?.BeginCall();
+
             try
             {
                 if (ShouldWriteReference(value, null, contract, null, null))
@@ -100,6 +103,8 @@ namespace Newtonsoft.Json.Serialization
             }
             finally
             {
+                explanationCollector?.EndCall();
+
                 // clear root contract to ensure that if level was > 1 then it won't
                 // accidentally be used for non root values
                 _rootType = null;
@@ -299,7 +304,7 @@ namespace Newtonsoft.Json.Serialization
             return Serializer.GetReferenceResolver().IsReferenced(this, value);
         }
 
-        private bool ShouldWriteProperty(object? memberValue, JsonObjectContract? containerContract, JsonProperty property)
+        private bool ShouldWriteProperty(object? memberValue, JsonObjectContract? containerContract, JsonProperty property, JsonWriter writer)
         {
             if (memberValue == null && ResolvedNullValueHandling(containerContract, property) == NullValueHandling.Ignore)
             {
@@ -309,10 +314,22 @@ namespace Newtonsoft.Json.Serialization
             if (HasFlag(property.DefaultValueHandling.GetValueOrDefault(Serializer._defaultValueHandling), DefaultValueHandling.Ignore)
                 && MiscellaneousUtils.ValueEquals(memberValue, property.GetResolvedDefaultValue()))
             {
+                RecordPropertyIgnored(writer, property, JsonIgnoreReason.DefaultValue);
                 return false;
             }
 
             return true;
+        }
+
+        private void RecordPropertyIgnored(JsonWriter writer, JsonProperty property, JsonIgnoreReason reason)
+        {
+            IJsonIgnoreExplanationSink? sink = Serializer._ignoreExplanationSink;
+            if (sink == null)
+            {
+                return;
+            }
+
+            sink.OnPropertyIgnored(new JsonIgnoreExplanation(property.PropertyName, property.DeclaringType, reason, writer.ContainerPath));
         }
 
         private bool CheckForCircularReference(JsonWriter writer, object? value, JsonProperty? property, JsonContract? contract, JsonContainerContract? containerContract, JsonProperty? containerProperty)
@@ -565,7 +582,26 @@ namespace Newtonsoft.Json.Serialization
 
         private bool CalculatePropertyValues(JsonWriter writer, object value, JsonContainerContract contract, JsonProperty? member, JsonProperty property, [NotNullWhen(true)]out JsonContract? memberContract, out object? memberValue)
         {
-            if (!property.Ignored && property.Readable && ShouldSerialize(writer, property, value) && IsSpecified(writer, property, value))
+            // record why a property is skipped using the serializer's own execution results;
+            // the checks below run in the same order and with the same short-circuiting as before,
+            // so no getter or ShouldSerialize predicate is invoked additional times
+            if (property.Ignored)
+            {
+                RecordPropertyIgnored(writer, property, JsonIgnoreReason.Ignored);
+            }
+            else if (!property.Readable)
+            {
+                // no getter available; nothing is evaluated or recorded
+            }
+            else if (!ShouldSerialize(writer, property, value))
+            {
+                RecordPropertyIgnored(writer, property, JsonIgnoreReason.ShouldSerialize);
+            }
+            else if (!IsSpecified(writer, property, value))
+            {
+                // IsSpecified returned false; not part of the explanation view
+            }
+            else
             {
                 if (property.PropertyContract == null)
                 {
@@ -575,7 +611,7 @@ namespace Newtonsoft.Json.Serialization
                 memberValue = property.ValueProvider!.GetValue(value);
                 memberContract = (property.PropertyContract.IsSealed) ? property.PropertyContract : GetContractSafe(memberValue);
 
-                if (ShouldWriteProperty(memberValue, contract as JsonObjectContract, property))
+                if (ShouldWriteProperty(memberValue, contract as JsonObjectContract, property, writer))
                 {
                     if (ShouldWriteReference(memberValue, property, memberContract, contract, member))
                     {

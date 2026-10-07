@@ -269,6 +269,14 @@ namespace Newtonsoft.Json
         public ITraceWriter? TraceWriter { get; set; }
 
         /// <summary>
+        /// Gets or sets the <see cref="IJsonIgnoreExplanationSink"/> that receives a
+        /// <see cref="JsonIgnoreExplanation"/> whenever a property is not serialized because of
+        /// an ignore rule (Ignore, ShouldSerialize or DefaultValue strategy).
+        /// </summary>
+        /// <value>The ignore explanation sink.</value>
+        public IJsonIgnoreExplanationSink? IgnoreExplanationSink { get; set; }
+
+        /// <summary>
         /// Gets or sets the <see cref="SerializationBinder"/> used by the serializer when resolving type names.
         /// </summary>
         /// <value>The binder.</value>
@@ -479,6 +487,7 @@ namespace Newtonsoft.Json
             Error = original.Error;
             SerializationBinder = original.SerializationBinder;
             TraceWriter = original.TraceWriter;
+            IgnoreExplanationSink = original.IgnoreExplanationSink;
             _culture = original._culture;
             ReferenceResolverProvider = original.ReferenceResolverProvider;
             EqualityComparer = original.EqualityComparer;

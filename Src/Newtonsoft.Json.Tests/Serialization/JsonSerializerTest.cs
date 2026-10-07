@@ -8139,6 +8139,9 @@ This is just junk, though.";
             Assert.AreEqual(settings.TraceWriter, clone.TraceWriter);
             Assert.IsTrue(propertyNames.Remove(nameof(JsonSerializerSettings.TraceWriter)));
 
+            Assert.AreEqual(settings.IgnoreExplanationSink, clone.IgnoreExplanationSink);
+            Assert.IsTrue(propertyNames.Remove(nameof(JsonSerializerSettings.IgnoreExplanationSink)));
+
 #pragma warning disable CS0618 // Type or member is obsolete
             Assert.AreEqual(settings.Binder, clone.Binder);
             Assert.IsTrue(propertyNames.Remove(nameof(JsonSerializerSettings.Binder)));

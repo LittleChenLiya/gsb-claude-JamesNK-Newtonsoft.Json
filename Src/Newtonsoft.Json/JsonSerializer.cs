@@ -61,6 +61,7 @@ namespace Newtonsoft.Json
         internal JsonConverterCollection? _converters;
         internal IContractResolver _contractResolver;
         internal ITraceWriter? _traceWriter;
+        internal IJsonIgnoreExplanationSink? _ignoreExplanationSink;
         internal IEqualityComparer? _equalityComparer;
         internal ISerializationBinder _serializationBinder;
         internal StreamingContext _context;
@@ -158,6 +159,21 @@ namespace Newtonsoft.Json
         {
             get => _traceWriter;
             set => _traceWriter = value;
+        }
+
+        /// <summary>
+        /// Gets or sets the <see cref="IJsonIgnoreExplanationSink"/> that receives a
+        /// <see cref="JsonIgnoreExplanation"/> whenever a property is not serialized because of
+        /// an ignore rule (<see cref="JsonProperty.Ignored"/>, a ShouldSerialize predicate or
+        /// <see cref="Json.DefaultValueHandling.Ignore"/>). Explanations are recorded from the
+        /// serializer's actual execution; setting a sink never causes property getters or
+        /// ShouldSerialize predicates to be invoked additional times.
+        /// </summary>
+        /// <value>The ignore explanation sink.</value>
+        public virtual IJsonIgnoreExplanationSink? IgnoreExplanationSink
+        {
+            get => _ignoreExplanationSink;
+            set => _ignoreExplanationSink = value;
         }
 
         /// <summary>
@@ -728,6 +744,10 @@ namespace Newtonsoft.Json
             if (settings.TraceWriter != null)
             {
                 serializer.TraceWriter = settings.TraceWriter;
+            }
+            if (settings.IgnoreExplanationSink != null)
+            {
+                serializer.IgnoreExplanationSink = settings.IgnoreExplanationSink;
             }
             if (settings.EqualityComparer != null)
             {

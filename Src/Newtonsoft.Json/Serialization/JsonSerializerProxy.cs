@@ -59,6 +59,12 @@ namespace Newtonsoft.Json.Serialization
             set => _serializer.TraceWriter = value;
         }
 
+        public override IJsonIgnoreExplanationSink? IgnoreExplanationSink
+        {
+            get => _serializer.IgnoreExplanationSink;
+            set => _serializer.IgnoreExplanationSink = value;
+        }
+
         public override IEqualityComparer? EqualityComparer
         {
             get => _serializer.EqualityComparer;
