@@ -150,6 +150,13 @@ namespace Newtonsoft.Json
         /// <value></value>
         public override Type ValueType => _reader.ValueType;
 
+        /// <summary>
+        /// Gets a view over the source text of the current date token, including the time zone offset
+        /// exactly as it was written in the JSON input.
+        /// </summary>
+        /// <value></value>
+        public override JsonDateTokenSource DateTokenSource => _reader.DateTokenSource;
+
         private void Push(SchemaScope scope)
         {
             _stack.Push(scope);
